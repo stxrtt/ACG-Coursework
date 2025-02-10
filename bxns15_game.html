@@ -15,7 +15,6 @@
     </style>
   </head>
   <body>
-  
     <script type="importmap">
         {
             "imports": {
@@ -26,7 +25,6 @@
             }
         }
     </script>
-
     <script type="module">
         // Import Three.js and OrbitControls
         import * as THREE from 'three';
@@ -64,15 +62,76 @@
         directionalLight.position.set(50, 50, 50);
         scene.add(directionalLight);
 
-        // ----- Environment: Ground Plane -----
+        // ----- Environment: Ground Surface as Parametric Bézier Surface -----
         // Create a large plane using polygon modelling to serve as the outdoor ground
-        const groundGeometry = new THREE.PlaneGeometry(200, 200, 50, 50);
-        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x228b22 }); // forest green
-        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-        ground.rotation.x = -Math.PI / 2; // rotate so the plane is horizontal
-        ground.position.y = 0;
-        scene.add(ground);
+        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x228b22, side: THREE.BackSide }); // forest green
 
+        // Define control points for the cubic Bézier surface
+        // A slight bump towards the positive x
+        const cp = [
+            [
+                new THREE.Vector3(-100, 0, -100),
+                new THREE.Vector3(-100, 0, -33),
+                new THREE.Vector3(-100, 0, 33),
+                new THREE.Vector3(-100, 0, 100)
+            ],
+            [
+                new THREE.Vector3(-33, 0, -100),
+                new THREE.Vector3(-33, 4, -33),
+                new THREE.Vector3(-33, 4, 33),
+                new THREE.Vector3(-33, 0, 100)
+            ],
+            [
+                new THREE.Vector3(33, 0, -100),
+                new THREE.Vector3(33, 8, -33),
+                new THREE.Vector3(33, 8, 33),
+                new THREE.Vector3(33, 0, 100)
+            ],
+            [
+                new THREE.Vector3(100, 0, -100),
+                new THREE.Vector3(100, 8, -33),
+                new THREE.Vector3(100, 8, 33),
+                new THREE.Vector3(100, 0, 100)
+            ]
+        ];
+
+        // Define parametric function for the Bézier surface
+        // u, v are in [0, 1]
+        function bezierSurface(u, v, target) {
+            // Compute Bernstein basis polynomials (degree 3) for u and v
+            const oneMinusU = 1 - u;
+            const oneMinusV = 1 - v;
+            const bu = [
+                oneMinusU * oneMinusU * oneMinusU, // (1 - u)^3
+                3 * oneMinusU * oneMinusU * u, // 3u(1 - u)^2
+                3 * oneMinusU * u * u, // 3u^2(1 - u)
+                u * u * u // u^3
+            ];
+            const bv = [
+                oneMinusV * oneMinusV * oneMinusV, // (1 - v)^3
+                3 * oneMinusV * oneMinusV * v, // 3v(1 - v)^2
+                3 * oneMinusV * v * v, // 3v^2(1 - v)
+                v * v * v // v^3
+            ];
+
+            // Sum over all 16 control points
+            let point = new THREE.Vector3(0, 0, 0);
+            for (let i = 0; i < 4; i++) {
+                for (let j = 0; j < 4; j++) {
+                    const weight = bu[i] * bv[j];
+                    point.x += cp[i][j].x * weight;
+                    point.y += cp[i][j].y * weight;
+                    point.z += cp[i][j].z * weight;
+                }
+            }
+            target.set(point.x, point.y, point.z);
+        }
+
+        // Create the parametric geometry with a 50x50 segment grid
+        const surfaceGeometry = new ParametricGeometry(bezierSurface, 50, 50);
+        const groundSurface = new THREE.Mesh(surfaceGeometry, groundMaterial);
+        scene.add(groundSurface);
+        
         // ----- MCS Building -----
         // The building is modeled as three stacked cuboids
         // A helper function to create a cuboid given dimensions and a color
@@ -102,8 +161,16 @@
         topCuboid.position.y = 4 + 3 + 4 / 2; // bottom height + middle height + half of top cuboid's height
         buildingGroup.add(topCuboid);
 
+        // Building footprint on the curved surface
+        let buildingFootprint = new THREE.Vector3();
+        bezierSurface(0.6, 0.5, buildingFootprint);
+
         // Position the building group in the scene (e.g., in front of the MCS Building area)
         buildingGroup.position.set(0, 0, -20);
+        scene.add(buildingGroup);
+
+        // Place building so base that the base is on the surface
+        buildingGroup.position.set(buildingFootprint.x, buildingFootprint.y, buildingFootprint.z);
         scene.add(buildingGroup);
 
         // ----- Animation Loop -----
