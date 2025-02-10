@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Digital Open-Air Sculpture Gallery</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+  
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/",
+                "three/controls/OrbitControls": "https://unpkg.com/three@0.158.0/examples/jsm/controls/OrbitControls.js",
+                "three/geometries/ParametricGeometry": "https://unpkg.com/three@0.158.0/examples/jsm/geometries/ParametricGeometry.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        // Import Three.js and OrbitControls
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/controls/OrbitControls';
+        import { ParametricGeometry } from 'three/geometries/ParametricGeometry';
+
+        // ----- Scene Setup -----
+        // Create the scene with a background color and fog for depth
+        const scene = new THREE.Scene();
+        const bgColor = 0xbfd1e5;
+        scene.background = new THREE.Color(bgColor);
+        scene.fog = new THREE.Fog(bgColor, 10, 200);
+
+        // Set up the camera with a perspective projection
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(-30, 15, 20);
+
+        // Create the WebGL renderer with antialiasing
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Add OrbitControls for interactive navigation
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; // smooth controls
+        controls.dampingFactor = 0.25;
+
+        // ----- Lighting -----
+        // Ambient light for overall illumination
+        const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
+        scene.add(ambientLight);
+
+        // Directional light to simulate sunlight
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(50, 50, 50);
+        scene.add(directionalLight);
+
+        // ----- Environment: Ground Plane -----
+        // Create a large plane using polygon modelling to serve as the outdoor ground
+        const groundGeometry = new THREE.PlaneGeometry(200, 200, 50, 50);
+        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x228b22 }); // forest green
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2; // rotate so the plane is horizontal
+        ground.position.y = 0;
+        scene.add(ground);
+
+        // ----- MCS Building -----
+        // The building is modeled as three stacked cuboids
+        // A helper function to create a cuboid given dimensions and a color
+        function createCuboid(width, height, depth, color) {
+        const geometry = new THREE.BoxGeometry(width, height, depth);
+        const material = new THREE.MeshLambertMaterial({ color: color });
+        return new THREE.Mesh(geometry, material);
+        }
+
+        // Group to hold the three cuboids
+        const buildingGroup = new THREE.Group();
+
+        // Bottom Cuboid: larger size (20 x 4 x 20)
+        const bottomCuboid = createCuboid(20, 4, 20, 0x8b0000); // dark red
+        bottomCuboid.position.y = 4 / 2; // position so that its base rests on the ground
+        buildingGroup.add(bottomCuboid);
+
+        // Middle Cuboid: slightly smaller (16 x 3 x 16)
+        const middleCuboid = createCuboid(16, 3, 16, 0x4d98e8); // firebrick red
+        // Its base sits atop the bottom cuboid
+        middleCuboid.position.y = 4 + 3 / 2; // bottom height + half of middle cuboid's height
+        buildingGroup.add(middleCuboid);
+
+        // Top Cuboid: same size as bottom (20 x 4 x 20)
+        const topCuboid = createCuboid(20, 4, 20, 0x8b0000); // dark red
+        // Its base sits atop the middle cuboid
+        topCuboid.position.y = 4 + 3 + 4 / 2; // bottom height + middle height + half of top cuboid's height
+        buildingGroup.add(topCuboid);
+
+        // Position the building group in the scene (e.g., in front of the MCS Building area)
+        buildingGroup.position.set(0, 0, -20);
+        scene.add(buildingGroup);
+
+        // ----- Animation Loop -----
+        function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+        }
+        animate();
+
+        // ----- Handle Window Resize -----
+        window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+  </body>
+</html>
