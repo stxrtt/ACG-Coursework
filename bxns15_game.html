@@ -103,26 +103,28 @@
         buildingGroup.position.set(0, 0, 20);
         scene.add(buildingGroup);
 
-        // ----- Blue Lake with Subtle Waves -----
-        // Create a plane for the lake. Use many segments for vertex displacement
-        const lakeWidth = 30;
-        const lakeHeight = 14;
-        const lakeSegments = 50;
-        const lakeGeometry = new THREE.PlaneGeometry(lakeWidth, lakeHeight, lakeSegments, lakeSegments);
-        lakeGeometry.rotateX(-Math.PI / 2); // rotate the plane to be horizontal
+        // ----- Oval Blue Lake with Subtle Waves -----
+        // Create oval lake by generating circles and scaling non-uniformly
+        const ovalLakeSegments = 64;
+        const lakeWidth = 15;
+        const lakeHeight = 7;
+        let ovalLakeGeometry = new THREE.CircleGeometry(1, ovalLakeSegments);
+        // Scale the circle to an oval
+        ovalLakeGeometry.applyMatrix4(new THREE.Matrix4().makeScale(lakeWidth, lakeHeight, 1));
+        // Rotate to horizontal
+        ovalLakeGeometry.rotateX(-Math.PI / 2);
 
-        // Blue material with slight transparency
-        const lakeMaterial = new THREE.MeshLambertMaterial({ color: 0x1e90ff, transparent: true, opacity: 0.8 });
+        // Create the lake material with a blue color and transparency
+        const ovalLakeMaterial = new THREE.MeshLambertMaterial({ color: 0x1e90ff, transparent: true, opacity: 0.8 });
 
-        const lake = new THREE.Mesh(lakeGeometry, lakeMaterial);
+        const ovalLake = new THREE.Mesh(ovalLakeGeometry, ovalLakeMaterial);
         // Position the lake in front of the building
         // 30 units in the negative z of the building
-        const lakeOffset = 30;
-        lake.position.set(-10,  0.31, -20);
-        scene.add(lake);
+        ovalLake.position.set(-10,  0.41, -20);
+        scene.add(ovalLake);
 
         // Save original vertex positions for wave animation
-        const lakeOriginalPositions = lake.geometry.attributes.position.array.slice();
+        const lakeOriginalPositions = ovalLake.geometry.attributes.position.array.slice();
 
         // ----- Animation Loop -----
         function animate() {
@@ -130,18 +132,16 @@
 
         // Update lake vertices for subtle wave motion
         const time = performance.now() * 0.001; // seconds
-        for (let i = 0; i < lakeGeometry.attributes.position.count; i++) {
+        for (let i = 0; i < ovalLakeGeometry.attributes.position.count; i++) {
             const ix = i * 3;
             // Original x and z positions (the base y is zero)
             const x = lakeOriginalPositions[ix];
             const z = lakeOriginalPositions[ix + 2];
-            // Set aa small wave amplitude and frequency
-            const amplitude = 0.3;
-            const frequency = 0.2;
-            lakeGeometry.attributes.position.setY(i, amplitude * Math.sin(frequency * (x + z + time))); // wave motion
+            const amplitude = 0.4;
+            const frequency = 0.4;
+            ovalLakeGeometry.attributes.position.setY(i, amplitude * Math.sin(frequency * (x + z + time))); // wave motion
         }
-        lakeGeometry.attributes.position.needsUpdate = true;
-
+        ovalLakeGeometry.attributes.position.needsUpdate = true;
         controls.update();
         renderer.render(scene, camera);
         }
