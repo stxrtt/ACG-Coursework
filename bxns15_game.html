@@ -62,75 +62,13 @@
         directionalLight.position.set(50, 50, 50);
         scene.add(directionalLight);
 
-        // ----- Environment: Ground Surface as Parametric Bézier Surface -----
+        // ----- Environment: Ground Surface as Flat Plane -----
         // Create a large plane using polygon modelling to serve as the outdoor ground
-        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x228b22, side: THREE.BackSide }); // forest green
-
-        // Define control points for the cubic Bézier surface
-        // A slight bump towards the positive x
-        const cp = [
-            [
-                new THREE.Vector3(-100, 0, -100),
-                new THREE.Vector3(-100, 0, -33),
-                new THREE.Vector3(-100, 0, 33),
-                new THREE.Vector3(-100, 0, 100)
-            ],
-            [
-                new THREE.Vector3(-33, 0, -100),
-                new THREE.Vector3(-33, 4, -33),
-                new THREE.Vector3(-33, 4, 33),
-                new THREE.Vector3(-33, 0, 100)
-            ],
-            [
-                new THREE.Vector3(33, 0, -100),
-                new THREE.Vector3(33, 8, -33),
-                new THREE.Vector3(33, 8, 33),
-                new THREE.Vector3(33, 0, 100)
-            ],
-            [
-                new THREE.Vector3(100, 0, -100),
-                new THREE.Vector3(100, 8, -33),
-                new THREE.Vector3(100, 8, 33),
-                new THREE.Vector3(100, 0, 100)
-            ]
-        ];
-
-        // Define parametric function for the Bézier surface
-        // u, v are in [0, 1]
-        function bezierSurface(u, v, target) {
-            // Compute Bernstein basis polynomials (degree 3) for u and v
-            const oneMinusU = 1 - u;
-            const oneMinusV = 1 - v;
-            const bu = [
-                oneMinusU * oneMinusU * oneMinusU, // (1 - u)^3
-                3 * oneMinusU * oneMinusU * u, // 3u(1 - u)^2
-                3 * oneMinusU * u * u, // 3u^2(1 - u)
-                u * u * u // u^3
-            ];
-            const bv = [
-                oneMinusV * oneMinusV * oneMinusV, // (1 - v)^3
-                3 * oneMinusV * oneMinusV * v, // 3v(1 - v)^2
-                3 * oneMinusV * v * v, // 3v^2(1 - v)
-                v * v * v // v^3
-            ];
-
-            // Sum over all 16 control points
-            let point = new THREE.Vector3(0, 0, 0);
-            for (let i = 0; i < 4; i++) {
-                for (let j = 0; j < 4; j++) {
-                    const weight = bu[i] * bv[j];
-                    point.x += cp[i][j].x * weight;
-                    point.y += cp[i][j].y * weight;
-                    point.z += cp[i][j].z * weight;
-                }
-            }
-            target.set(point.x, point.y, point.z);
-        }
-
-        // Create the parametric geometry with a 50x50 segment grid
-        const surfaceGeometry = new ParametricGeometry(bezierSurface, 50, 50);
-        const groundSurface = new THREE.Mesh(surfaceGeometry, groundMaterial);
-        scene.add(groundSurface);
+        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x228b22 }); // forest green
+        const groundGeometry = new THREE.PlaneGeometry(200, 200);
+        groundGeometry.rotateX(-Math.PI / 2); // rotate the plane to be horizontal
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        scene.add(ground);
         
         // ----- MCS Building -----
         // The building is modeled as three stacked cuboids
@@ -161,22 +99,49 @@
         topCuboid.position.y = 4 + 3 + 4 / 2; // bottom height + middle height + half of top cuboid's height
         buildingGroup.add(topCuboid);
 
-        // Building footprint on the curved surface
-        let buildingFootprint = new THREE.Vector3();
-        bezierSurface(0.6, 0.5, buildingFootprint);
-
-        // Position the building group in the scene (e.g., in front of the MCS Building area)
-        //buildingGroup.position.set(0, 0, -20);
-        buildingGroup.position.set(buildingFootprint.x, buildingFootprint.y, buildingFootprint.z);
+        // Position the MCS building group in the scene
+        buildingGroup.position.set(0, 0, 20);
         scene.add(buildingGroup);
 
-        // Place building so base that the base is on the surface
-        buildingGroup.position.set(buildingFootprint.x, buildingFootprint.y, buildingFootprint.z);
-        scene.add(buildingGroup);
+        // ----- Blue Lake with Subtle Waves -----
+        // Create a plane for the lake. Use many segments for vertex displacement
+        const lakeWidth = 30;
+        const lakeHeight = 14;
+        const lakeSegments = 50;
+        const lakeGeometry = new THREE.PlaneGeometry(lakeWidth, lakeHeight, lakeSegments, lakeSegments);
+        lakeGeometry.rotateX(-Math.PI / 2); // rotate the plane to be horizontal
+
+        // Blue material with slight transparency
+        const lakeMaterial = new THREE.MeshLambertMaterial({ color: 0x1e90ff, transparent: true, opacity: 0.8 });
+
+        const lake = new THREE.Mesh(lakeGeometry, lakeMaterial);
+        // Position the lake in front of the building
+        // 30 units in the negative z of the building
+        const lakeOffset = 30;
+        lake.position.set(-10,  0.31, -20);
+        scene.add(lake);
+
+        // Save original vertex positions for wave animation
+        const lakeOriginalPositions = lake.geometry.attributes.position.array.slice();
 
         // ----- Animation Loop -----
         function animate() {
         requestAnimationFrame(animate);
+
+        // Update lake vertices for subtle wave motion
+        const time = performance.now() * 0.001; // seconds
+        for (let i = 0; i < lakeGeometry.attributes.position.count; i++) {
+            const ix = i * 3;
+            // Original x and z positions (the base y is zero)
+            const x = lakeOriginalPositions[ix];
+            const z = lakeOriginalPositions[ix + 2];
+            // Set aa small wave amplitude and frequency
+            const amplitude = 0.3;
+            const frequency = 0.2;
+            lakeGeometry.attributes.position.setY(i, amplitude * Math.sin(frequency * (x + z + time))); // wave motion
+        }
+        lakeGeometry.attributes.position.needsUpdate = true;
+
         controls.update();
         renderer.render(scene, camera);
         }
