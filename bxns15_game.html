@@ -56,7 +56,6 @@
         // Ambient light for overall illumination
         const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
         scene.add(ambientLight);
-
         // Directional light to simulate sunlight
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
         directionalLight.position.set(50, 50, 50);
@@ -70,78 +69,120 @@
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         scene.add(ground);
         
-        // ----- MCS Building -----
-        // The building is modeled as three stacked cuboids
-        // A helper function to create a cuboid given dimensions and a color
-        function createCuboid(width, height, depth, color) {
+        // ----- MCS Building: Low-Detail (LD), High-Detail (HD) -----
+        // A helper function to create a low detail cuboid
+        function createCuboidLD(width, height, depth, color) {
         const geometry = new THREE.BoxGeometry(width, height, depth);
         const material = new THREE.MeshLambertMaterial({ color: color });
         return new THREE.Mesh(geometry, material);
         }
 
-        // Group to hold the three cuboids
-        const buildingGroup = new THREE.Group();
-
+        // Group to hold LD building components
+        const buildingGroupLD = new THREE.Group();
         // Bottom Cuboid: larger size (20 x 4 x 20)
-        const bottomCuboid = createCuboid(20, 4, 20, 0x8b0000); // dark red
-        bottomCuboid.position.y = 4 / 2; // position so that its base rests on the ground
-        buildingGroup.add(bottomCuboid);
+        const bottomLD = createCuboidLD(20, 4, 20, 0x8b0000); // dark red
+        bottomLD.position.y = 2; // position so that its base rests on the ground
+        buildingGroupLD.add(bottomLD);
 
         // Middle Cuboid: slightly smaller (16 x 3 x 16)
-        const middleCuboid = createCuboid(16, 3, 16, 0x4d98e8); // firebrick red
-        // Its base sits atop the bottom cuboid
-        middleCuboid.position.y = 4 + 3 / 2; // bottom height + half of middle cuboid's height
-        buildingGroup.add(middleCuboid);
+        const middleLD = createCuboidLD(16, 3, 16, 0x4d98e8); // firebrick red
+        middleLD.position.y = 4 + 1.5; // stacked
+        buildingGroupLD.add(middleLD);
 
         // Top Cuboid: same size as bottom (20 x 4 x 20)
-        const topCuboid = createCuboid(20, 4, 20, 0x8b0000); // dark red
-        // Its base sits atop the middle cuboid
-        topCuboid.position.y = 4 + 3 + 4 / 2; // bottom height + middle height + half of top cuboid's height
-        buildingGroup.add(topCuboid);
+        const topLD = createCuboidLD(20, 4, 20, 0x8b0000); // dark red
+        topLD.position.y = 4 + 3 + 2; // stacked
+        buildingGroupLD.add(topLD);
 
-        // Position the MCS building group in the scene
-        buildingGroup.position.set(0, 0, 20);
-        scene.add(buildingGroup);
+        // High-detail building components
+        function createCuboidHDLayer(width, height, depth, color) {
+          const geometry = new THREE.BoxGeometry(width, height, depth);
+          const material = new THREE.MeshLambertMaterial({ color: color });
+          const mesh = new THREE.Mesh(geometry, material);
+          // Create edge geometry for outlining subdivided faces
+          const edges = new THREE.EdgesGeometry(geometry);
+          const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
+          const lineSegments = new THREE.LineSegments(edges, lineMaterial);
+          mesh.add(lineSegments);
+          return mesh;
+        }
 
-        // ----- Oval Blue Lake with Subtle Waves -----
-        // Create oval lake by generating circles and scaling non-uniformly
-        const ovalLakeSegments = 64;
-        const lakeWidth = 15;
-        const lakeHeight = 7;
-        let ovalLakeGeometry = new THREE.CircleGeometry(1, ovalLakeSegments);
-        // Scale the circle to an oval
-        ovalLakeGeometry.applyMatrix4(new THREE.Matrix4().makeScale(lakeWidth, lakeHeight, 1));
-        // Rotate to horizontal
-        ovalLakeGeometry.rotateX(-Math.PI / 2);
+        // Group to hold HD building components
+        const buildingGroupHD = new THREE.Group();
+        const totalHeight = 11;
+        const numLayers = 5;
+        const layerHeight = totalHeight / numLayers;
+        // Alternate layer colours (red) and (blue)
+        const layerColors = [0x8b0000, 0x4d98e8, 0x8b0000, 0x4d98e8, 0x8b0000];
+        
+        for (let i = 0; i < numLayers; i++) {
+          // Every second layer is slightly smaller in width and depth
+          const layer = createCuboidHDLayer(20 - (4 * (i%2)), layerHeight, 20 - (4 * (i%2)), layerColors[i]);
+          // Position layers so that they stack within the same overall building
+          layer.position.y = (layerHeight / 2) + (i * layerHeight);
+          buildingGroupHD.add(layer);
+        }
 
-        // Create the lake material with a blue color and transparency
-        const ovalLakeMaterial = new THREE.MeshLambertMaterial({ color: 0x1e90ff, transparent: true, opacity: 0.8 });
+        // ----- LOD Setup -----
+        // Create a LOD object to manage the two levels of detail
+        const buildingLOD = new THREE.LOD();
+        // Add HD building to be visible when camera is close
+        buildingLOD.addLevel(buildingGroupHD, 0);
+        // Add LD building to be visible when camera is far
+        buildingLOD.addLevel(buildingGroupLD, 80);
 
-        const ovalLake = new THREE.Mesh(ovalLakeGeometry, ovalLakeMaterial);
-        // Position the lake in front of the building
-        // 30 units in the negative z of the building
-        ovalLake.position.set(-10,  0.41, -20);
-        scene.add(ovalLake);
+        // Position the building in the scene
+        buildingLOD.position.set(0, 0, 20);
+        scene.add(buildingLOD);
+
+        // ----- Oval Blue Lake with Subtle Waves (Parametric Surface) -----
+        const lakeSegmentsU = 64;
+        const lakeSegmentsV = 64;
+
+        // Define a parametric function for an elliptical disk
+        // u: 0->1 maps to angle 0->2π; v: 0->1 maps to radial distance
+        function lakeSurface(u, v, target) {
+          const theta = 2 * Math.PI * u;
+          const r = v; // radial coordinate [0,1]
+          const a = 15; // semi-axis in x (half-width ~30)
+          const b = 7;  // semi-axis in z (half-height ~14)
+          const x = a * r * Math.cos(theta);
+          const z = b * r * Math.sin(theta);
+          const y = 0; // baseline (displaced by waves)
+          target.set(x, y, z);
+        }
+
+        // Create the parametric geometry for the lake
+        const lakeGeometry = new ParametricGeometry(lakeSurface, lakeSegmentsU, lakeSegmentsV);
+
+        const lakeMaterial = new THREE.MeshLambertMaterial({
+          color: 0x1e90ff,
+          transparent: true,
+          opacity: 0.8
+        });
+        const lake = new THREE.Mesh(lakeGeometry, lakeMaterial);
+        // Position the lake in front of the MCS building
+        lake.position.set(-10, 0.41, -20);
+        scene.add(lake);
 
         // Save original vertex positions for wave animation
-        const lakeOriginalPositions = ovalLake.geometry.attributes.position.array.slice();
+        const lakeOriginalPositions = lake.geometry.attributes.position.array.slice();
 
         // ----- Animation Loop -----
         function animate() {
-        requestAnimationFrame(animate);
+          requestAnimationFrame(animate);
+          const time = performance.now() * 0.001; // seconds
 
-        // Update lake vertices for subtle wave motion
-        const time = performance.now() * 0.001; // seconds
-        for (let i = 0; i < ovalLakeGeometry.attributes.position.count; i++) {
+          // Update each vertex's y coordinate for wave motion
+          for (let i = 0; i < lake.geometry.attributes.position.count; i++) {
             const ix = i * 3;
-            // Original x and z positions (the base y is zero)
             const x = lakeOriginalPositions[ix];
             const z = lakeOriginalPositions[ix + 2];
             const amplitude = 0.4;
             const frequency = 0.4;
-            ovalLakeGeometry.attributes.position.setY(i, amplitude * Math.sin(frequency * (x + z + time))); // wave motion
-        }
-        ovalLakeGeometry.attributes.position.needsUpdate = true;
+            lake.geometry.attributes.position.setY(i, amplitude * Math.sin(frequency * (x + z + time)));
+          }
+          lake.geometry.attributes.position.needsUpdate = true;
         controls.update();
         renderer.render(scene, camera);
         }
