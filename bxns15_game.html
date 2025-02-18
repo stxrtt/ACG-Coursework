@@ -72,9 +72,15 @@
         // ----- MCS Building: Low-Detail (LD), High-Detail (HD) -----
         // A helper function to create a low detail cuboid
         function createCuboidLD(width, height, depth, color) {
-        const geometry = new THREE.BoxGeometry(width, height, depth);
-        const material = new THREE.MeshLambertMaterial({ color: color });
-        return new THREE.Mesh(geometry, material);
+          const geometry = new THREE.BoxGeometry(width, height, depth);
+          // For blue, add transparency
+          const materialOptions = { color: color };
+          if (color === 0x4d98e8) {
+            materialOptions.transparent = true;
+            materialOptions.opacity = 0.7;
+          }
+          const material = new THREE.MeshLambertMaterial(materialOptions);
+          return new THREE.Mesh(geometry, material);
         }
 
         // Group to hold LD building components
@@ -96,8 +102,13 @@
 
         // High-detail building components
         function createCuboidHDLayer(width, height, depth, color) {
-          const geometry = new THREE.BoxGeometry(width, height, depth);
-          const material = new THREE.MeshLambertMaterial({ color: color });
+          const geometry = new THREE.BoxGeometry(width, height, depth, 4, 4, 4);
+          const materialOptions = { color: color };
+          if (color === 0x4d98e8) {
+            materialOptions.transparent = true;
+            materialOptions.opacity = 0.7;
+          }
+          const material = new THREE.MeshLambertMaterial(materialOptions);
           const mesh = new THREE.Mesh(geometry, material);
           // Create edge geometry for outlining subdivided faces
           const edges = new THREE.EdgesGeometry(geometry);
@@ -158,7 +169,7 @@
         const lakeMaterial = new THREE.MeshLambertMaterial({
           color: 0x1e90ff,
           transparent: true,
-          opacity: 0.8
+          opacity: 0.6
         });
         const lake = new THREE.Mesh(lakeGeometry, lakeMaterial);
         // Position the lake in front of the MCS building
