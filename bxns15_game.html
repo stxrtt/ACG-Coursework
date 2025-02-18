@@ -36,7 +36,7 @@
         const scene = new THREE.Scene();
         const bgColor = 0xbfd1e5;
         scene.background = new THREE.Color(bgColor);
-        scene.fog = new THREE.Fog(bgColor, 10, 200);
+        scene.fog = new THREE.Fog(bgColor, 50, 200);
 
         // Set up the camera with a perspective projection
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -178,6 +178,61 @@
 
         // Save original vertex positions for wave animation
         const lakeOriginalPositions = lake.geometry.attributes.position.array.slice();
+
+        // ----- Tree model & Random Distribution -----
+        // Brown cylinder trunk and green cone canopy
+        function createTree() {
+          const tree = new THREE.Group();
+          // Trunk
+          const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.5, 3, 8);
+          const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8b4513 });
+          const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+          trunk.position.y = 1; // half of trunk height
+          tree.add(trunk);
+          // First (lower) canopy
+          const canopy1Geometry = new THREE.ConeGeometry(2.5, 3, 8);
+          const canopyMaterial = new THREE.MeshLambertMaterial({ color: 0x00aa00 });
+          const canopy1 = new THREE.Mesh(canopy1Geometry, canopyMaterial);
+          // Position: trunk top (y=4) plus half of canopy1 height (1.5) = 5.5
+          canopy1.position.y = 3.5;
+          tree.add(canopy1);
+          // Second (upper) canopy
+          const canopy2Geometry = new THREE.ConeGeometry(1.5, 2, 8);
+          const canopy2 = new THREE.Mesh(canopy2Geometry, canopyMaterial);
+          canopy2.position.y = 5;
+          tree.add(canopy2);
+          return tree;
+        }
+
+        // Create group for trees
+        const treeGroup = new THREE.Group();
+        // Define exclusion zones for the building and lake.
+        const buildingCenter = new THREE.Vector2(0, 20);
+        const lakeCenter = new THREE.Vector2(-10, -20);
+        const minDistFromBuilding = 2.5;
+        const minDistFromLake = 2.5;
+        // Generate candidate positions on the ground plane (x, z in [-100, 100]).
+        const numCandidates = 300;
+        for (let i = 0; i < numCandidates; i++) {
+          const x = THREE.MathUtils.randFloat(-100, 100);
+          const z = THREE.MathUtils.randFloat(-100, 100);
+          // Compute distance from the center of the plane (to favor edges)
+          const dCenter = Math.sqrt(x * x + z * z);
+          // If too close to center, skip
+          if (dCenter < 30) continue;
+          // Probability increases with distance from center
+          const prob = (dCenter - 30) / (Math.sqrt(2 * 100 * 100) - 30);
+          if (Math.random() > prob) continue;
+          // Ensure candidate is not too close to the building or lake
+          const candidate = new THREE.Vector2(x, z);
+          if (candidate.distanceTo(buildingCenter) < minDistFromBuilding) continue;
+          if (candidate.distanceTo(lakeCenter) < minDistFromLake) continue;
+          // Create and add the tree at this position.
+          const tree = createTree();
+          tree.position.set(x, 0, z);
+          treeGroup.add(tree);
+        }
+        scene.add(treeGroup);
 
         // ----- Animation Loop -----
         function animate() {
