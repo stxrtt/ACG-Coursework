@@ -184,22 +184,21 @@
         function createTree() {
           const tree = new THREE.Group();
           // Trunk
-          const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.5, 3, 8);
+          const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.5, 3, 16, 4);
           const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8b4513 });
           const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-          trunk.position.y = 1; // half of trunk height
+          trunk.position.y = 1.5; // half of trunk height
           tree.add(trunk);
           // First (lower) canopy
-          const canopy1Geometry = new THREE.ConeGeometry(2.5, 3, 8);
+          const canopy1Geometry = new THREE.ConeGeometry(2.5, 3, 16, 2);
           const canopyMaterial = new THREE.MeshLambertMaterial({ color: 0x00aa00 });
           const canopy1 = new THREE.Mesh(canopy1Geometry, canopyMaterial);
-          // Position: trunk top (y=4) plus half of canopy1 height (1.5) = 5.5
-          canopy1.position.y = 3.5;
+          canopy1.position.y = 4.5;
           tree.add(canopy1);
           // Second (upper) canopy
           const canopy2Geometry = new THREE.ConeGeometry(1.5, 2, 8);
           const canopy2 = new THREE.Mesh(canopy2Geometry, canopyMaterial);
-          canopy2.position.y = 5;
+          canopy2.position.y = 6;
           tree.add(canopy2);
           return tree;
         }
