@@ -140,7 +140,7 @@
         // Add HD building to be visible when camera is close
         buildingLOD.addLevel(buildingGroupHD, 0);
         // Add LD building to be visible when camera is far
-        buildingLOD.addLevel(buildingGroupLD, 80);
+        buildingLOD.addLevel(buildingGroupLD, 100);
 
         // Position the building in the scene
         buildingLOD.position.set(0, 0, 20);
@@ -179,9 +179,9 @@
         // Save original vertex positions for wave animation
         const lakeOriginalPositions = lake.geometry.attributes.position.array.slice();
 
-        // ----- Tree model & Random Distribution -----
+        // ----- Tree model & Random Distribution with Billboarding -----
         // Brown cylinder trunk and green cone canopy
-        function createTree() {
+        function createTreeHD() {
           const tree = new THREE.Group();
           // Trunk
           const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.5, 3, 16, 4);
@@ -203,15 +203,79 @@
           return tree;
         }
 
+        // Create 2D sprite for the tree (billboard, from lecture)
+        // Create tree billboard texture with matched proportions
+        function generateTreeSpriteTexture() {
+            const tempScene = new THREE.Scene();
+            // Calculate aspect ratio based on tree model dimensions
+            const treeWidth = 4; // Width of widest part (leaves)
+            const treeHeight = 7.5; // Total height of tree
+            const aspect = treeWidth / treeHeight;
+            
+            // Set camera to match tree proportions
+            const tempCamera = new THREE.OrthographicCamera(
+                -treeWidth/2, treeWidth/2,
+                treeHeight/2, -treeHeight/2,
+                0.1, 10
+            );
+            tempCamera.position.set(0, treeHeight/2, 5);
+            tempCamera.lookAt(0, treeHeight/2, 0);
+            
+            // Match lighting to main scene
+            const tempLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            tempLight.position.copy(directionalLight.position);
+            tempScene.add(tempLight);
+            tempScene.add(new THREE.AmbientLight(0x404040));
+            
+            const treeModel = createTreeHD();
+            tempScene.add(treeModel);
+            
+            renderer.setClearColor(0x000000, 0);
+            const renderTarget = new THREE.WebGLRenderTarget(256, 256 / aspect, {
+                format: THREE.RGBAFormat,
+                type: THREE.UnsignedByteType
+            });
+            
+            renderer.setRenderTarget(renderTarget);
+            renderer.clear();
+            renderer.render(tempScene, tempCamera);
+            renderer.setRenderTarget(null);
+            
+            return renderTarget.texture;
+        }
+
+        // Create a sprite from the generated texture
+        function createTreeSpriteFromModel(tree) {
+          const texture = generateTreeSpriteTexture();
+          const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
+          // Use the tree's bounding box to set sprite scale
+          const bbox = new THREE.Box3().setFromObject(tree);
+          const size = bbox.getSize(new THREE.Vector3());
+          const sprite = new THREE.Sprite(spriteMaterial);
+          sprite.scale.set(size.x, size.y, 1);
+          return sprite;
+        }
+
+        // Create tree LOD: high-detail 3D tree when near, billboard sprite when far
+        function createTreeLOD() {
+          const highDetail = createTreeHD();
+          const sprite = createTreeSpriteFromModel(highDetail);
+          sprite.position.y += 4; // offset to match tree model
+          const lod = new THREE.LOD();
+          lod.addLevel(highDetail, 0);
+          lod.addLevel(sprite, 100); // switch to sprite when >150 units away
+          return lod;
+        }
+
         // Create group for trees
         const treeGroup = new THREE.Group();
         // Define exclusion zones for the building and lake.
         const buildingCenter = new THREE.Vector2(0, 20);
         const lakeCenter = new THREE.Vector2(-10, -20);
-        const minDistFromBuilding = 2.5;
-        const minDistFromLake = 2.5;
+        const minDistFromBuilding = 1;
+        const minDistFromLake = 1;
         // Generate candidate positions on the ground plane (x, z in [-100, 100]).
-        const numCandidates = 300;
+        const numCandidates = 400;
         for (let i = 0; i < numCandidates; i++) {
           const x = THREE.MathUtils.randFloat(-100, 100);
           const z = THREE.MathUtils.randFloat(-100, 100);
@@ -227,9 +291,9 @@
           if (candidate.distanceTo(buildingCenter) < minDistFromBuilding) continue;
           if (candidate.distanceTo(lakeCenter) < minDistFromLake) continue;
           // Create and add the tree at this position.
-          const tree = createTree();
-          tree.position.set(x, 0, z);
-          treeGroup.add(tree);
+          const treeLOD = createTreeLOD();
+          treeLOD.position.set(x, 0, z);
+          treeGroup.add(treeLOD);
         }
         scene.add(treeGroup);
 
@@ -248,8 +312,31 @@
             lake.geometry.attributes.position.setY(i, amplitude * Math.sin(frequency * (x + z + time)));
           }
           lake.geometry.attributes.position.needsUpdate = true;
-        controls.update();
-        renderer.render(scene, camera);
+
+          // Update LOD objects in treeGroup and adjust billboard sprite orientation
+          treeGroup.traverse(child => {
+            if (child instanceof THREE.LOD) {
+              child.update(camera);
+              // If current level is a Sprite, update its horizontal rotation
+              /*
+              child.traverse(grandChild => {
+                if (grandChild instanceof THREE.Sprite) {
+                  // Get the world position of the sprite
+                  const spritePos = new THREE.Vector3();
+                  grandChild.getWorldPosition(spritePos);
+                  const camPos = camera.position.clone();
+                  // Ignore vertical differences
+                  camPos.y = spritePos.y;
+                  const dir = new THREE.Vector3().subVectors(camPos, spritePos);
+                  const angle = Math.atan2(dir.x, dir.z);
+                  grandChild.material.rotation = angle;
+                }
+              });
+              */
+            }
+          });
+          controls.update();
+          renderer.render(scene, camera);
         }
         animate();
 
