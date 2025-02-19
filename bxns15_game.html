@@ -47,6 +47,10 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
+        // Enable shadows in the renderer
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
         // Add OrbitControls for interactive navigation
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true; // smooth controls
@@ -58,15 +62,29 @@
         scene.add(ambientLight);
         // Directional light to simulate sunlight
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        directionalLight.position.set(50, 50, 50);
+        directionalLight.position.set(50, 50, -50);
+        // Configure directional light to cast shadows
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 1024;
+        directionalLight.shadow.mapSize.height = 1024;
+        directionalLight.shadow.camera.near = 0.5;
+        directionalLight.shadow.camera.far = 500;
+        directionalLight.shadow.camera.left = -100;
+        directionalLight.shadow.camera.right = 100;
+        directionalLight.shadow.camera.top = 100;
+        directionalLight.shadow.camera.bottom = -100;
+
         scene.add(directionalLight);
 
         // ----- Environment: Ground Surface as Flat Plane -----
         // Create a large plane using polygon modelling to serve as the outdoor ground
         const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x228b22 }); // forest green
-        const groundGeometry = new THREE.PlaneGeometry(200, 200);
+        const groundGeometry = new THREE.PlaneGeometry(175, 175);
         groundGeometry.rotateX(-Math.PI / 2); // rotate the plane to be horizontal
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        // Enable receiving shadows for the ground
+        ground.receiveShadow = true;
+
         scene.add(ground);
         
         // ----- MCS Building: Low-Detail (LD), High-Detail (HD) -----
@@ -80,7 +98,11 @@
             materialOptions.opacity = 0.7;
           }
           const material = new THREE.MeshLambertMaterial(materialOptions);
-          return new THREE.Mesh(geometry, material);
+          const mesh = new THREE.Mesh(geometry, material);
+          // enable shadows for the building
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          return mesh;
         }
 
         // Group to hold LD building components
@@ -110,6 +132,10 @@
           }
           const material = new THREE.MeshLambertMaterial(materialOptions);
           const mesh = new THREE.Mesh(geometry, material);
+          // Enable shadows for the building
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+
           // Create edge geometry for outlining subdivided faces
           const edges = new THREE.EdgesGeometry(geometry);
           const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
@@ -188,17 +214,23 @@
           const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8b4513 });
           const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
           trunk.position.y = 1.5; // half of trunk height
+          trunk.castShadow = true;
+          trunk.receiveShadow = true;
           tree.add(trunk);
           // First (lower) canopy
           const canopy1Geometry = new THREE.ConeGeometry(2.5, 3, 16, 2);
           const canopyMaterial = new THREE.MeshLambertMaterial({ color: 0x00aa00 });
           const canopy1 = new THREE.Mesh(canopy1Geometry, canopyMaterial);
           canopy1.position.y = 4.5;
+          canopy1.castShadow = true;
+          canopy1.receiveShadow = true;
           tree.add(canopy1);
           // Second (upper) canopy
           const canopy2Geometry = new THREE.ConeGeometry(1.5, 2, 8);
           const canopy2 = new THREE.Mesh(canopy2Geometry, canopyMaterial);
           canopy2.position.y = 6;
+          canopy2.castShadow = true;
+          canopy2.receiveShadow = true;
           tree.add(canopy2);
           return tree;
         }
@@ -222,10 +254,10 @@
             tempCamera.lookAt(0, treeHeight/2, 0);
             
             // Match lighting to main scene
-            const tempLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            const tempLight = new THREE.DirectionalLight(0xffffff, 1);
             tempLight.position.copy(directionalLight.position);
             tempScene.add(tempLight);
-            tempScene.add(new THREE.AmbientLight(0x404040));
+            tempScene.add(new THREE.AmbientLight(0x404040, 1.5));
             
             const treeModel = createTreeHD();
             tempScene.add(treeModel);
@@ -263,7 +295,7 @@
           sprite.position.y += 4; // offset to match tree model
           const lod = new THREE.LOD();
           lod.addLevel(highDetail, 0);
-          lod.addLevel(sprite, 100); // switch to sprite when >150 units away
+          lod.addLevel(sprite, 125); // switch to sprite when >150 units away
           return lod;
         }
 
@@ -277,8 +309,8 @@
         // Generate candidate positions on the ground plane (x, z in [-100, 100]).
         const numCandidates = 400;
         for (let i = 0; i < numCandidates; i++) {
-          const x = THREE.MathUtils.randFloat(-100, 100);
-          const z = THREE.MathUtils.randFloat(-100, 100);
+          const x = THREE.MathUtils.randFloat(-85, 85);
+          const z = THREE.MathUtils.randFloat(-85, 85);
           // Compute distance from the center of the plane (to favor edges)
           const dCenter = Math.sqrt(x * x + z * z);
           // If too close to center, skip
@@ -317,22 +349,6 @@
           treeGroup.traverse(child => {
             if (child instanceof THREE.LOD) {
               child.update(camera);
-              // If current level is a Sprite, update its horizontal rotation
-              /*
-              child.traverse(grandChild => {
-                if (grandChild instanceof THREE.Sprite) {
-                  // Get the world position of the sprite
-                  const spritePos = new THREE.Vector3();
-                  grandChild.getWorldPosition(spritePos);
-                  const camPos = camera.position.clone();
-                  // Ignore vertical differences
-                  camPos.y = spritePos.y;
-                  const dir = new THREE.Vector3().subVectors(camPos, spritePos);
-                  const angle = Math.atan2(dir.x, dir.z);
-                  grandChild.material.rotation = angle;
-                }
-              });
-              */
             }
           });
           controls.update();
