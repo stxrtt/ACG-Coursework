@@ -340,13 +340,105 @@
         }
         scene.add(treeGroup);
 
+        // ----- Waving purple flag -----
+        // Global time variable for waving animation
+        let flagTime = 0;
+
+        // Global constants for size of flag
+        const poleHeight = 10;
+        const flagHeight = 4;
+        const flagLength = 6;
+        
+        // Flag as parametric surface
+        function flagSurface(u, v, target) {
+          // Map v so that v=0 corresponds to -halfHeight and v=1 to +halfHeight
+          const y = v * flagHeight - flagHeight / 2;
+          
+          // Define control points for a cubic Bézier curve that shapes free edge.
+          // pole edge is fixed at x = 0
+          const amp1 = 0.5, amp2 = 0.5;
+          const freq = 1.0;
+          const p0 = new THREE.Vector3(0, y, 0);  // Fixed at the pole
+          const p1 = new THREE.Vector3(flagLength * 0.33,
+                                      y + amp1 * Math.sin(flagTime + v * freq),
+                                      0);
+          // slight time-dependent offset in p1 and p2 so that the free edge waves
+          const p2 = new THREE.Vector3(flagLength * 0.66,
+                                      y + amp2 * Math.cos(flagTime + v * freq),
+                                      0);
+          const p3 = new THREE.Vector3(flagLength, y, 0); // Free edge base
+
+          // Evaluate the cubic Bézier curve for parameter t = u
+          const t = u;
+          const oneMinusT = 1 - t;
+          const x = oneMinusT * oneMinusT * oneMinusT * p0.x +
+                    3 * oneMinusT * oneMinusT * t * p1.x +
+                    3 * oneMinusT * t * t * p2.x +
+                    t * t * t * p3.x;
+          const newY = oneMinusT * oneMinusT * oneMinusT * p0.y +
+                      3 * oneMinusT * oneMinusT * t * p1.y +
+                      3 * oneMinusT * t * t * p2.y +
+                      t * t * t * p3.y;
+          // Add a slight oscillation in the z-direction to simulate a 3D ripple
+          const newZ = 0.2 * Math.sin(2 * Math.PI * u + flagTime);
+          
+          target.set(x, newY, newZ);
+        }
+
+        // Create the flag geometry using ParametricGeometry
+        // The flag’s left edge (u = 0) will attach to the pole
+        const flagGeometry = new ParametricGeometry(flagSurface, 20, 10);
+        const flagMaterial = new THREE.MeshLambertMaterial({ color: 0x800080, side: THREE.DoubleSide });
+        const flagMesh = new THREE.Mesh(flagGeometry, flagMaterial);
+        flagMesh.castShadow = true;
+        flagMesh.receiveShadow = true;
+
+        // Create thin pole
+        const poleGeometry = new THREE.CylinderGeometry(0.05, 0.05, poleHeight, 8);
+        const poleMaterial = new THREE.MeshLambertMaterial({ color: 0xaaaaaa });
+        const poleMesh = new THREE.Mesh(poleGeometry, poleMaterial);
+        poleMesh.castShadow = true;
+        poleMesh.receiveShadow = true;
+
+        // Position the pole so that its base touches the ground (y=0) and its center is at y = poleHeight/2
+        poleMesh.position.set(-15, poleHeight / 2, -7);
+        
+        // Position the flag so that its bottom edge aligns with the top of pole
+        // Since flag geometry spans from -flagHeight/2 to flagHeight/2 in y, setting its center at (poleHeight + flagHeight/2)
+        // places the bottom of the flag exactly at y = poleHeight.
+        flagMesh.position.set(-15, poleHeight - flagHeight / 2, -7);
+
+        // Add the pole and flag to scene
+        scene.add(poleMesh);
+        scene.add(flagMesh);
+
         // ----- Animation Loop -----
         function animate() {
           requestAnimationFrame(animate);
           //const time = performance.now() * 0.001; // seconds
 
           // Animate the water surface to simulate waves
-          lake.material.uniforms['time'].value += .5 / 60.0;
+          lake.material.uniforms['time'].value += .25 / 60.0;
+
+          // Update flag animation time
+          flagTime += 0.01;
+          
+          // Update flag geometry vertices using the flagSurface function.
+          // Retrieve the flag's uv attribute to use as (u,v) parameters.
+          const flagPositions = flagGeometry.attributes.position.array;
+          const flagUVs = flagGeometry.attributes.uv.array;
+          const vertexCount = flagGeometry.attributes.position.count;
+          const tempVec = new THREE.Vector3();
+          for (let i = 0; i < vertexCount; i++) {
+            const u = flagUVs[2 * i];
+            const v = flagUVs[2 * i + 1];
+            flagSurface(u, v, tempVec);
+            flagPositions[3 * i] = tempVec.x;
+            flagPositions[3 * i + 1] = tempVec.y;
+            flagPositions[3 * i + 2] = tempVec.z;
+          }
+          flagGeometry.attributes.position.needsUpdate = true;
+          flagGeometry.computeVertexNormals();
 
           // Update LOD objects in treeGroup and adjust billboard sprite orientation
           treeGroup.traverse(child => {
