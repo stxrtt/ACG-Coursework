@@ -184,8 +184,8 @@
         function lakeSurface(u, v, target) {
           const theta = 2 * Math.PI * u;
           const r = v; // radial coordinate [0,1]
-          const a = 15; // semi-axis in x (half-width ~30)
-          const b = 7;  // semi-axis in z (half-height ~14)
+          const a = 15; // semi-axis in x
+          const b = 7;  // semi-axis in z 
           const x = a * r * Math.cos(theta);
           const z = b * r * Math.sin(theta);
           const y = 0; // baseline (displaced by waves)
@@ -276,10 +276,7 @@
             tempScene.add(treeModel);
             
             renderer.setClearColor(0x000000, 0);
-            const renderTarget = new THREE.WebGLRenderTarget(256, 256 / aspect, {
-                format: THREE.RGBAFormat,
-                type: THREE.UnsignedByteType
-            });
+            const renderTarget = new THREE.WebGLRenderTarget(256, 256 / aspect, { format: THREE.RGBAFormat, type: THREE.UnsignedByteType});
             
             renderer.setRenderTarget(renderTarget);
             renderer.clear();
@@ -319,12 +316,12 @@
         const lakeCenter = new THREE.Vector2(-10, 0, -20);
         const minDistFromBuilding = 1;
         const minDistFromLake = 1;
-        // Generate candidate positions on the ground plane (x, z in [-100, 100]).
+        // Generate candidate positions on the ground plane
         const numCandidates = 400;
         for (let i = 0; i < numCandidates; i++) {
           const x = THREE.MathUtils.randFloat(-85, 85);
           const z = THREE.MathUtils.randFloat(-85, 85);
-          // Compute distance from the center of the plane (to favor edges)
+          // Compute distance from the center of the plane to favor edges
           const dCenter = Math.sqrt(x * x + z * z);
           // If too close to center, skip
           if (dCenter < 30) continue;
@@ -335,7 +332,7 @@
           const candidate = new THREE.Vector2(x, z);
           if (candidate.distanceTo(buildingCenter) < minDistFromBuilding) continue;
           if (candidate.distanceTo(lakeCenter) < minDistFromLake) continue;
-          // Create and add the tree at this position.
+          // Create and add the tree here
           const treeLOD = createTreeLOD();
           treeLOD.position.set(x, 0, z);
           treeGroup.add(treeLOD);
@@ -353,7 +350,6 @@
         
         // Flag as parametric surface
         function flagSurface(u, v, target) {
-          // Map v so that v=0 corresponds to -halfHeight and v=1 to +halfHeight
           const y = v * flagHeight - flagHeight / 2;
           
           // Define control points for a cubic Bézier curve that shapes free edge
