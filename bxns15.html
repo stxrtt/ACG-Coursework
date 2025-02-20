@@ -22,7 +22,8 @@
                 "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/",
                 "three/controls/OrbitControls": "https://unpkg.com/three@0.158.0/examples/jsm/controls/OrbitControls.js",
                 "three/geometries/ParametricGeometry": "https://unpkg.com/three@0.158.0/examples/jsm/geometries/ParametricGeometry.js",
-                "three/examples/jsm/objects/Water.js": "https://unpkg.com/three@0.158.0/examples/jsm/objects/Water.js"
+                "three/examples/jsm/objects/Water.js": "https://unpkg.com/three@0.158.0/examples/jsm/objects/Water.js",
+                "three/examples/jsm/controls/DragControls.js": "https://unpkg.com/three@0.158.0/examples/jsm/controls/DragControls.js"
             }
         }
     </script>
@@ -32,6 +33,7 @@
         import { OrbitControls } from 'three/controls/OrbitControls';
         import { ParametricGeometry } from 'three/geometries/ParametricGeometry';
         import { Water } from 'three/examples/jsm/objects/Water.js';
+        import { DragControls} from 'three/examples/jsm/controls/DragControls.js';
 
         // ----- Scene Setup -----
         // Create the scene with a background color and fog for depth
@@ -354,7 +356,7 @@
           // Map v so that v=0 corresponds to -halfHeight and v=1 to +halfHeight
           const y = v * flagHeight - flagHeight / 2;
           
-          // Define control points for a cubic Bézier curve that shapes free edge.
+          // Define control points for a cubic Bézier curve that shapes free edge
           // pole edge is fixed at x = 0
           const amp1 = 0.5, amp2 = 0.5;
           const freq = 1.0;
@@ -412,24 +414,126 @@
         scene.add(poleMesh);
         scene.add(flagMesh);
 
+        /// ----- Dodecahedron -----
+        const dodecahedronGroup = new THREE.Group();
+        // Create a dodecahedron with radius 3
+        const dodecahedronGeometry = new THREE.DodecahedronGeometry(3);
+        const dodecahedronMaterial = new THREE.MeshLambertMaterial({ color: 0xffa500, side: THREE.BackSide });
+        const dodecahedronMesh = new THREE.Mesh(dodecahedronGeometry, dodecahedronMaterial);
+        dodecahedronMesh.castShadow = true;
+        dodecahedronMesh.receiveShadow = true;
+        dodecahedronMesh.position.set(0, 0, 0);
+        dodecahedronGroup.add(dodecahedronMesh);
+
+        // Define FFD lattice so it encloses ± ~4 units around the dodecahedron
+        const latticeMin = new THREE.Vector3(-4, -4, -4);
+        const latticeMax = new THREE.Vector3(4, 4, 4);
+        const latticeDimX = 3, latticeDimY = 3, latticeDimZ = 3;
+        const controlPoints = []; // Will store our control point meshes
+
+        // Create a small sphere for each control point.
+        const cpGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+        const cpMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+
+        for (let i = 0; i < latticeDimX; i++) {
+          for (let j = 0; j < latticeDimY; j++) {
+            for (let k = 0; k < latticeDimZ; k++) {
+              const s = i / (latticeDimX - 1);
+              const t = j / (latticeDimY - 1);
+              const u = k / (latticeDimZ - 1);
+              const x = latticeMin.x + s * (latticeMax.x - latticeMin.x);
+              const y = latticeMin.y + t * (latticeMax.y - latticeMin.y);
+              const z = latticeMin.z + u * (latticeMax.z - latticeMin.z);
+              const cpMesh = new THREE.Mesh(cpGeometry, cpMaterial);
+              cpMesh.position.set(x, y, z);
+              cpMesh.castShadow = true;
+              cpMesh.receiveShadow = true;
+              cpMesh.userData.latticeIndex = { i, j, k };
+              
+              dodecahedronGroup.add(cpMesh);
+              controlPoints.push(cpMesh);
+            }
+          }
+        }
+        
+        // Add dodecahedron group to scene
+        scene.add(dodecahedronGroup);
+        dodecahedronGroup.position.set(17, 4, -3)
+
+        // ----- Precompute Dodecahedron Local Coordinates -----
+        // For each vertex of the dodecahedron, compute its local (s,t,u) coordinates 
+        // relative to the lattice bounding box.
+        const shapeLocalCoords = [];
+        const posAttr = dodecahedronGeometry.attributes.position;
+        const vertexCount = posAttr.count;
+        for (let i = 0; i < vertexCount; i++) {
+          const vx = posAttr.getX(i);
+          const vy = posAttr.getY(i);
+          const vz = posAttr.getZ(i);
+          // Convert to normalized [0..1] within latticeMin/latticeMax:
+          const s = (vx - latticeMin.x) / (latticeMax.x - latticeMin.x);
+          const t = (vy - latticeMin.y) / (latticeMax.y - latticeMin.y);
+          const u = (vz - latticeMin.z) / (latticeMax.z - latticeMin.z);
+          shapeLocalCoords.push({ s, t, u });
+        }
+
+        // ----- Bernstein Polynomial (degree = 2) -----
+        // For i=0,1,2 the Bernstein basis functions are:
+        function bernstein(i, t) {
+          if (i === 0) return (1 - t) * (1 - t);
+          if (i === 1) return 2 * t * (1 - t);
+          if (i === 2) return t * t;
+          return 0;
+        }
+
+        // ----- Free-Form Deformation Function -----
+        // Given local coordinates (s,t,u), compute the deformed position
+        // by blending the positions of the 3×3×3 control points.
+        function ffdDeform(s, t, u) {
+          const newPos = new THREE.Vector3(0, 0, 0);
+          for (let i = 0; i < latticeDimX; i++) {
+            const Bi = bernstein(i, s);
+            for (let j = 0; j < latticeDimY; j++) {
+              const Bj = bernstein(j, t);
+              for (let k = 0; k < latticeDimZ; k++) {
+                const Bk = bernstein(k, u);
+                const weight = Bi * Bj * Bk;
+                const index = i + j * latticeDimX + k * latticeDimX * latticeDimY;
+                const cpPos = controlPoints[index].position;
+                newPos.x += weight * cpPos.x;
+                newPos.y += weight * cpPos.y;
+                newPos.z += weight * cpPos.z;
+              }
+            }
+          }
+          return newPos;
+        }
+
+        // ----- Set Up DragControls for the Control Points -----
+        const dragControls = new DragControls(controlPoints, camera, renderer.domElement);
+        dragControls.addEventListener('dragstart', function (event) {
+          controls.enabled = false;
+        });
+        dragControls.addEventListener('dragend', function (event) {
+          controls.enabled = true;
+        });
+
         // ----- Animation Loop -----
         function animate() {
           requestAnimationFrame(animate);
-          //const time = performance.now() * 0.001; // seconds
-
           // Animate the water surface to simulate waves
           lake.material.uniforms['time'].value += .25 / 60.0;
 
           // Update flag animation time
           flagTime += 0.01;
           
-          // Update flag geometry vertices using the flagSurface function.
-          // Retrieve the flag's uv attribute to use as (u,v) parameters.
+          // Update flag geometry vertices using the flagSurface function
+          // Retrieve the flag's uv attribute to use as (u,v) parameters
           const flagPositions = flagGeometry.attributes.position.array;
           const flagUVs = flagGeometry.attributes.uv.array;
-          const vertexCount = flagGeometry.attributes.position.count;
+          const flagVertexCount = flagGeometry.attributes.position.count;
           const tempVec = new THREE.Vector3();
-          for (let i = 0; i < vertexCount; i++) {
+          for (let i = 0; i < flagVertexCount; i++) {
             const u = flagUVs[2 * i];
             const v = flagUVs[2 * i + 1];
             flagSurface(u, v, tempVec);
@@ -446,6 +550,17 @@
               child.update(camera);
             }
           });
+
+          // For each vertex, recalc its deformed position:
+          const dodecahedronVertexCount = shapeLocalCoords.length;
+          for (let i = 0; i < dodecahedronVertexCount; i++) {
+            const { s, t, u } = shapeLocalCoords[i];
+            const newPos = ffdDeform(s, t, u);
+            posAttr.setXYZ(i, newPos.x, newPos.y, newPos.z);
+          }
+          posAttr.needsUpdate = true;
+          dodecahedronGeometry.computeVertexNormals();
+
           controls.update();
           renderer.render(scene, camera);
         }
