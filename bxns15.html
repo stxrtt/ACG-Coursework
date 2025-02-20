@@ -21,7 +21,8 @@
                 "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
                 "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/",
                 "three/controls/OrbitControls": "https://unpkg.com/three@0.158.0/examples/jsm/controls/OrbitControls.js",
-                "three/geometries/ParametricGeometry": "https://unpkg.com/three@0.158.0/examples/jsm/geometries/ParametricGeometry.js"
+                "three/geometries/ParametricGeometry": "https://unpkg.com/three@0.158.0/examples/jsm/geometries/ParametricGeometry.js",
+                "three/examples/jsm/objects/Water.js": "https://unpkg.com/three@0.158.0/examples/jsm/objects/Water.js"
             }
         }
     </script>
@@ -30,6 +31,7 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/controls/OrbitControls';
         import { ParametricGeometry } from 'three/geometries/ParametricGeometry';
+        import { Water } from 'three/examples/jsm/objects/Water.js';
 
         // ----- Scene Setup -----
         // Create the scene with a background color and fog for depth
@@ -175,7 +177,6 @@
         // ----- Oval Blue Lake with Subtle Waves (Parametric Surface) -----
         const lakeSegmentsU = 64;
         const lakeSegmentsV = 64;
-
         // Define a parametric function for an elliptical disk
         // u: 0->1 maps to angle 0->2π; v: 0->1 maps to radial distance
         function lakeSurface(u, v, target) {
@@ -188,22 +189,32 @@
           const y = 0; // baseline (displaced by waves)
           target.set(x, y, z);
         }
-
         // Create the parametric geometry for the lake
         const lakeGeometry = new ParametricGeometry(lakeSurface, lakeSegmentsU, lakeSegmentsV);
 
-        const lakeMaterial = new THREE.MeshLambertMaterial({
-          color: 0x1e90ff,
-          transparent: true,
-          opacity: 0.6
+        // Load water normals 
+        const waterNormals = new THREE.TextureLoader().load(
+          'textures/waternormals.jpg',
+          texture => {
+            texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+          }
+        );
+
+        // Create a Water object using the lake geometry and water options
+        const lake = new Water(lakeGeometry, {
+          textureWidth: 512,
+          textureHeight: 512,
+          waterNormals: waterNormals,
+          alpha: 1.0,
+          sunDirection: directionalLight.position.clone().normalize(),
+          sunColor: 0xffffff,
+          waterColor: 0x1e90ff,
+          distortionScale: 3.7,
+          fog: scene.fog !== undefined
         });
-        const lake = new THREE.Mesh(lakeGeometry, lakeMaterial);
-        // Position the lake in front of the MCS building
+        lake.rotation.x = 2*Math.PI; // ensure the water surface is horizontal
         lake.position.set(-10, 0.41, -20);
         scene.add(lake);
-
-        // Save original vertex positions for wave animation
-        const lakeOriginalPositions = lake.geometry.attributes.position.array.slice();
 
         // ----- Tree model & Random Distribution with Billboarding -----
         // Brown cylinder trunk and green cone canopy
@@ -332,18 +343,10 @@
         // ----- Animation Loop -----
         function animate() {
           requestAnimationFrame(animate);
-          const time = performance.now() * 0.001; // seconds
+          //const time = performance.now() * 0.001; // seconds
 
-          // Update each vertex's y coordinate for wave motion
-          for (let i = 0; i < lake.geometry.attributes.position.count; i++) {
-            const ix = i * 3;
-            const x = lakeOriginalPositions[ix];
-            const z = lakeOriginalPositions[ix + 2];
-            const amplitude = 0.4;
-            const frequency = 0.4;
-            lake.geometry.attributes.position.setY(i, amplitude * Math.sin(frequency * (x + z + time)));
-          }
-          lake.geometry.attributes.position.needsUpdate = true;
+          // Animate the water surface to simulate waves
+          lake.material.uniforms['time'].value += .5 / 60.0;
 
           // Update LOD objects in treeGroup and adjust billboard sprite orientation
           treeGroup.traverse(child => {
