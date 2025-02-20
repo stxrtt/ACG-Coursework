@@ -316,7 +316,7 @@
         const treeGroup = new THREE.Group();
         // Define exclusion zones for the building and lake.
         const buildingCenter = new THREE.Vector2(0, 20);
-        const lakeCenter = new THREE.Vector2(-10, -20);
+        const lakeCenter = new THREE.Vector2(-10, 0, -20);
         const minDistFromBuilding = 1;
         const minDistFromLake = 1;
         // Generate candidate positions on the ground plane (x, z in [-100, 100]).
@@ -407,7 +407,7 @@
         
         // Position the flag so that its bottom edge aligns with the top of pole
         // Since flag geometry spans from -flagHeight/2 to flagHeight/2 in y, setting its center at (poleHeight + flagHeight/2)
-        // places the bottom of the flag exactly at y = poleHeight.
+        // places the bottom of the flag exactly at y = poleHeight
         flagMesh.position.set(-15, poleHeight - flagHeight / 2, -7);
 
         // Add the pole and flag to scene
@@ -431,7 +431,7 @@
         const latticeDimX = 3, latticeDimY = 3, latticeDimZ = 3;
         const controlPoints = []; // Will store our control point meshes
 
-        // Create a small sphere for each control point.
+        // Create a small sphere for each control point
         const cpGeometry = new THREE.SphereGeometry(0.2, 16, 16);
         const cpMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
 
@@ -461,8 +461,7 @@
         dodecahedronGroup.position.set(17, 4, -3)
 
         // ----- Precompute Dodecahedron Local Coordinates -----
-        // For each vertex of the dodecahedron, compute its local (s,t,u) coordinates 
-        // relative to the lattice bounding box.
+        // For each vertex of the dodecahedron, compute its local (s,t,u) coordinates relative to the lattice bounding box
         const shapeLocalCoords = [];
         const posAttr = dodecahedronGeometry.attributes.position;
         const vertexCount = posAttr.count;
@@ -470,7 +469,7 @@
           const vx = posAttr.getX(i);
           const vy = posAttr.getY(i);
           const vz = posAttr.getZ(i);
-          // Convert to normalized [0..1] within latticeMin/latticeMax:
+          // Convert to normalized [0..1] within latticeMin/latticeMax
           const s = (vx - latticeMin.x) / (latticeMax.x - latticeMin.x);
           const t = (vy - latticeMin.y) / (latticeMax.y - latticeMin.y);
           const u = (vz - latticeMin.z) / (latticeMax.z - latticeMin.z);
@@ -478,7 +477,6 @@
         }
 
         // ----- Bernstein Polynomial (degree = 2) -----
-        // For i=0,1,2 the Bernstein basis functions are:
         function bernstein(i, t) {
           if (i === 0) return (1 - t) * (1 - t);
           if (i === 1) return 2 * t * (1 - t);
@@ -487,8 +485,7 @@
         }
 
         // ----- Free-Form Deformation Function -----
-        // Given local coordinates (s,t,u), compute the deformed position
-        // by blending the positions of the 3×3×3 control points.
+        // Given local coordinates (s,t,u), compute the deformed position by blending the positions of the 3×3×3 control points
         function ffdDeform(s, t, u) {
           const newPos = new THREE.Vector3(0, 0, 0);
           for (let i = 0; i < latticeDimX; i++) {
@@ -517,6 +514,50 @@
         dragControls.addEventListener('dragend', function (event) {
           controls.enabled = true;
         });
+
+        // ----- Boat Model and Animation -----
+        const boatGroup = new THREE.Group();
+
+        // Boat Hull
+        const hullGeometry = new THREE.BoxGeometry(2, 0.5, 1);
+        const hullMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+        const hullMesh = new THREE.Mesh(hullGeometry, hullMaterial);
+        hullMesh.castShadow = true;
+        hullMesh.receiveShadow = true;
+        hullMesh.position.set(0, 0, 0);
+        boatGroup.add(hullMesh);
+
+        // Boat Mast
+        const mastGeometry = new THREE.CylinderGeometry(0.05, 0.05, 1, 8);
+        const mastMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+        const mastMesh = new THREE.Mesh(mastGeometry, mastMaterial);
+        mastMesh.castShadow = true;
+        mastMesh.receiveShadow = true;
+        mastMesh.position.set(0, 0.75, 0);
+        boatGroup.add(mastMesh);
+
+        // Sail
+        const sailGeometry = new THREE.PlaneGeometry(0.8, 1);
+        const sailMaterial = new THREE.MeshLambertMaterial({ 
+          color: 0xffffff, 
+          side: THREE.DoubleSide 
+        });
+        const sailMesh = new THREE.Mesh(sailGeometry, sailMaterial);
+        sailMesh.castShadow = true;
+        sailMesh.receiveShadow = true;
+        // Position the sail so that its bottom touches the mast
+        sailMesh.position.set(0.3, 0.75, 0);
+        // Rotate slightly
+        sailMesh.rotation.y = Math.PI / 8;
+        sailMesh.rotation.z = -Math.PI / 12;
+        boatGroup.add(sailMesh);
+
+        // Add the boat group to the scene
+        scene.add(boatGroup);
+
+        // Animate along circular path
+        let boatAngle = 0;
+        const boatRadius = 5; // Circular path radius
 
         // ----- Animation Loop -----
         function animate() {
@@ -560,6 +601,17 @@
           }
           posAttr.needsUpdate = true;
           dodecahedronGeometry.computeVertexNormals();
+
+          // Boat: Increment the angle for animation
+          boatAngle += 0.01;
+
+          // Calculate position relative to the lake's center
+          const x = -10 + boatRadius * Math.cos(boatAngle);
+          const z = -20 + boatRadius * Math.sin(boatAngle);
+          boatGroup.position.set(x, 0.41, z);
+
+          // Rotate the boat so it faces along the tangent to the circle
+          boatGroup.rotation.y = -boatAngle + Math.PI / 2;
 
           controls.update();
           renderer.render(scene, camera);
